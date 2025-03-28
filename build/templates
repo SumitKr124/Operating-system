@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>System Monitor Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        canvas { max-width: 600px; }
+        table, th, td { border: 1px solid black; border-collapse: collapse; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Real-Time System Monitor</h2>
+    
+    <h3>CPU Usage</h3>
+    <canvas id="cpuChart"></canvas>
+
+    <h3>Memory Usage</h3>
+    <p id="memoryInfo"></p>
+
+    <h3>Processes</h3>
+    <table id="processTable"></table>
+
+    <script>
+        const cpuChartCtx = document.getElementById('cpuChart').getContext('2d');
+        const cpuChart = new Chart(cpuChartCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'CPU %', data: [] }] },
+            options: { responsive: true }
+        });
+
+        async function updateDashboard() {
+            const res = await fetch('/api/system');
+            const data = await res.json();
+
+            // Update CPU Chart
+            const now = new Date().toLocaleTimeString();
+            cpuChart.data.labels.push(now);
+            cpuChart.data.datasets[0].data.push(data.cpu_percent);
+            if (cpuChart.data.labels.length > 20) { cpuChart.data.labels.shift(); cpuChart.data.datasets[0].data.shift(); }
+            cpuChart.update();
+
+            // Update Memory
+            document.getElementById('memoryInfo').innerText = `Used: ${(data.memory.used / 1e9).toFixed(2)} GB / ${(data.memory.total / 1e9).toFixed(2)} GB`;
+
+            // Update Process Table
+            let table = `<tr><th>PID</th><th>Name</th><th>Status</th><th>CPU %</th><th>Mem %</th><th>Actions</th></tr>`;
+            data.processes.forEach(proc => {
+                table += `<tr>
+                    <td>${proc.pid}</td>
+                    <td>${proc.name}</td>
+                    <td>${proc.status}</td>
+                    <td>${proc.cpu_percent.toFixed(1)}</td>
+                    <td>${proc.memory_percent.toFixed(1)}</td>
+                    <td><button onclick="killProcess(${proc.pid})">Kill</button></td>
+                </tr>`;
+            });
+            document.getElementById('processTable').innerHTML = table;
+        }
+
+        async function killProcess(pid) {
+            await fetch('/api/kill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pid })
+            });
+            updateDashboard();
+        }
+
+        setInterval(updateDashboard, 2000);
+        updateDashboard();
+    </script>
+</body>
+</html>
